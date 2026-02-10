@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>מנהל הוצאות - ניהול פיננסי חכם</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+</head>
+<body>
+    <!-- Theme Toggle Button -->
+    <button class="theme-toggle" id="theme-toggle" title="החלף ערכת נושא">
+        <span class="theme-icon">🌙</span>
+    </button>
+
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>💰 מנהל הוצאות</h1>
+            <p>נהל את הכספים שלך בצורה חכמה ויעילה</p>
+        </div>
+
+        <!-- Dashboard Cards -->
+        <div class="dashboard">
+            <div class="card income">
+                <div class="icon">📈</div>
+                <h2>סך הכנסות</h2>
+                <div class="amount">{{ "{:,.0f}".format(total_income) }} ₪</div>
+            </div>
+            <div class="card expense">
+                <div class="icon">📉</div>
+                <h2>סך הוצאות</h2>
+                <div class="amount">{{ "{:,.0f}".format(total_expenses) }} ₪</div>
+            </div>
+            <div class="card balance {% if balance >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                <div class="icon">💎</div>
+                <h2>יתרה</h2>
+                <div class="amount">{{ "{:,.0f}".format(balance) }} ₪</div>
+            </div>
+        </div>
+
+        <!-- Add Transaction Form -->
+        <div class="form-section">
+            <h2>➕ הוסף תנועה חדשה</h2>
+            <form action="/add" method="POST">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="type">סוג תנועה:</label>
+                        <select name="type" id="type" required>
+                            <option value="Income">הכנסה</option>
+                            <option value="Expense">הוצאה</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="category">קטגוריה:</label>
+                        <div class="searchable-select-wrapper">
+                            <input type="text" id="category-search" class="category-search-input" placeholder="חפש או בחר קטגוריה..." autocomplete="off">
+                            <input type="hidden" name="category" id="category" required>
+                            <div class="category-dropdown" id="category-dropdown">
+                                <!-- Options will be populated dynamically by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="amount">סכום (₪):</label>
+                        <input type="number" name="amount" id="amount" step="0.01" required placeholder="0.00">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="date">תאריך:</label>
+                        <input type="date" name="date" id="date" required>
+                    </div>
+                </div>
+                
+                <button type="submit">הוסף תנועה</button>
+            </form>
+        </div>
+
+        <!-- Transactions Table -->
+        <div class="transactions-section">
+            <h2>📋 היסטוריית תנועות</h2>
+            
+            <!-- Filter Section -->
+            <div class="filter-section" id="filter-section">
+                <div class="form-group">
+                    <label for="filter-search">🔍 חיפוש:</label>
+                    <input type="text" id="filter-search" placeholder="חפש לפי קטגוריה או סכום...">
+                </div>
+                <div class="form-group">
+                    <label for="filter-type">סוג:</label>
+                    <select id="filter-type">
+                        <option value="">הכל</option>
+                        <option value="Income">הכנסות</option>
+                        <option value="Expense">הוצאות</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="filter-period">תקופה:</label>
+                    <select id="filter-period">
+                        <option value="">הכל</option>
+                        <option value="month">חודש נוכחי</option>
+                        <option value="year">שנה נוכחית</option>
+                        <option value="custom-month">בחר חודש</option>
+                        <option value="custom-year">בחר שנה</option>
+                    </select>
+                </div>
+                <div class="form-group" id="custom-month-group" style="display: none;">
+                    <label for="filter-custom-month">בחר חודש:</label>
+                    <select id="filter-custom-month">
+                        <!-- Will be populated dynamically -->
+                    </select>
+                </div>
+                <div class="form-group" id="custom-year-group" style="display: none;">
+                    <label for="filter-custom-year">בחר שנה:</label>
+                    <select id="filter-custom-year">
+                        <!-- Will be populated dynamically -->
+                    </select>
+                </div>
+                <div class="form-group filter-buttons">
+                    <button type="button" class="btn-filter" id="apply-filter">🔍 סנן</button>
+                    <button type="button" class="btn-clear-filter" id="clear-filter">✖ נקה</button>
+                </div>
+            </div>
+            
+            {% if transactions %}
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>פעולות</th>
+                            <th class="sortable" data-column="date">תאריך <span class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-column="amount">סכום <span class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-column="category">קטגוריה <span class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-column="type">סוג <span class="sort-icon">⇅</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for transaction in transactions %}
+                        <tr class="transaction-{{ 'income' if transaction[1] == 'Income' else 'expense' }}" data-id="{{ transaction[0] }}">
+                            <td class="actions-cell">
+                                <button type="button" class="edit-btn" onclick="openEditModal({{ transaction[0] }})">✏️ ערוך</button>
+                                <a href="/delete/{{ transaction[0] }}" class="delete-btn" onclick="return confirm('האם אתה בטוח שברצונך למחוק תנועה זו?')">🗑️ מחק</a>
+                            </td>
+                            <td data-date="{{ transaction[4] }}">{{ transaction[4] }}</td>
+                            <td class="amount-{{ 'income' if transaction[1] == 'Income' else 'expense' }}" data-amount="{{ transaction[3] }}">
+                                {{ "{:,.2f}".format(transaction[3]) }} ₪
+                            </td>
+                            <td data-category="{{ transaction[2] }}">{{ transaction[2] }}</td>
+                            <td data-type="{{ transaction[1] }}">
+                                {% if transaction[1] == 'Income' %}
+                                    <span style="color: #10b981; font-weight: 600;">📈 הכנסה</span>
+                                {% else %}
+                                    <span style="color: #ef4444; font-weight: 600;">📉 הוצאה</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="balance-row">
+                            <td colspan="2" style="text-align: left; font-weight: bold; font-size: 1.1rem;">יתרה:</td>
+                            <td class="balance-amount {% if balance >= 0 %}balance-positive{% else %}balance-negative{% endif %}" style="font-weight: bold; font-size: 1.2rem;">
+                                {{ "{:,.2f}".format(balance) }} ₪
+                            </td>
+                            <td colspan="2"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            
+            <form action="/export" method="POST" id="export-form" style="margin-top: 20px;">
+                <input type="hidden" name="sort_column" id="export-sort-column" value="date">
+                <input type="hidden" name="sort_direction" id="export-sort-direction" value="desc">
+                <button type="submit" class="btn-export">📥 ייצא לקובץ CSV</button>
+            </form>
+            {% else %}
+            <div class="empty-state">
+                <div class="icon">📭</div>
+                <p>אין תנועות עדיין. התחל להוסיף תנועות כדי לעקוב אחר ההוצאות וההכנסות שלך!</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Charts -->
+        {% if transactions %}
+        <div class="charts-section">
+            <div class="chart-container">
+                <h2>📊 סיכום הכנסות מול הוצאות</h2>
+                <canvas id="incomeExpenseChart"></canvas>
+            </div>
+            
+            <div class="chart-container">
+                <h2>🥧 פילוח הוצאות לפי קטגוריות</h2>
+                <canvas id="expensePieChart"></canvas>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        // Set today's date as default
+        document.getElementById('date').valueAsDate = new Date();
+
+        // Global chart instances for updating
+        var incomeExpenseChart = null;
+        var expensePieChart = null;
+
+        // Chart colors for pie chart
+        var pieChartColors = [
+            '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6',
+            '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16',
+            '#a855f7', '#f43f5e', '#22c55e', '#eab308', '#6366f1',
+            '#d946ef', '#0ea5e9', '#65a30d', '#c026d3', '#fb7185',
+            '#fbbf24', '#34d399', '#60a5fa', '#a78bfa', '#f472b6'
+        ];
+
+        {% if transactions %}
+        // Income vs Expense Bar Chart
+        var ctx = document.getElementById('incomeExpenseChart').getContext('2d');
+        incomeExpenseChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['הכנסות', 'הוצאות'],
+                datasets: [{
+                    label: 'סכום (₪)',
+                    data: [{{ total_income }}, {{ total_expenses }}],
+                    backgroundColor: [
+                        'rgba(16, 185, 129, 0.8)',
+                        'rgba(239, 68, 68, 0.8)'
+                    ],
+                    borderColor: [
+                        'rgba(16, 185, 129, 1)',
+                        'rgba(239, 68, 68, 1)'
+                    ],
+                    borderWidth: 2,
+                    borderRadius: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(148, 163, 184, 0.1)',
+                            borderColor: 'rgba(148, 163, 184, 0.2)'
+                        },
+                        ticks: {
+                            color: '#cbd5e1',
+                            callback: function(value) {
+                                return '₪' + value.toLocaleString('he-IL');
+                            }
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: 'rgba(148, 163, 184, 0.1)',
+                            borderColor: 'rgba(148, 163, 184, 0.2)'
+                        },
+                        ticks: {
+                            color: '#cbd5e1'
+                        }
+                    }
+                }
+            }
+        });
+
+        // Expense Breakdown Pie Chart - Build initial data from transactions
+        var expenseCategories = [];
+        var expenseAmounts = [];
+        var categoryTotals = {};
+
+        // Calculate category totals from transactions
+        {% for transaction in transactions %}
+            {% if transaction[1] == 'Expense' %}
+                var cat = "{{ transaction[2] }}";
+                var amt = {{ transaction[3] }};
+                if (categoryTotals[cat]) {
+                    categoryTotals[cat] += amt;
+                } else {
+                    categoryTotals[cat] = amt;
+                }
+            {% endif %}
+        {% endfor %}
+
+        // Convert to arrays for chart
+        for (var cat in categoryTotals) {
+            if (categoryTotals[cat] > 0) {
+                expenseCategories.push(cat);
+                expenseAmounts.push(categoryTotals[cat]);
+            }
+        }
+
+        var pieCtx = document.getElementById('expensePieChart').getContext('2d');
+        expensePieChart = new Chart(pieCtx, {
+            type: 'doughnut',
+            data: {
+                labels: expenseCategories,
+                datasets: [{
+                    label: 'הוצאות',
+                    data: expenseAmounts,
+                    backgroundColor: pieChartColors.slice(0, expenseCategories.length),
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        rtl: true,
+                        labels: {
+                            padding: 15,
+                            color: '#cbd5e1',
+                            font: {
+                                size: 12
+                            }
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                        titleColor: '#e2e8f0',
+                        bodyColor: '#cbd5e1',
+                        borderColor: 'rgba(129, 140, 248, 0.3)',
+                        borderWidth: 1,
+                        padding: 12,
+                        cornerRadius: 8,
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.label || '';
+                                let value = context.parsed || 0;
+                                let total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                let percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                return label + ': ₪' + value.toLocaleString('he-IL') + ' (' + percentage + '%)';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        {% endif %}
+
+        // Function to update charts with filtered data
+        function updateCharts(data) {
+            // Update Income vs Expense Bar Chart
+            if (incomeExpenseChart) {
+                incomeExpenseChart.data.datasets[0].data = [data.total_income, data.total_expenses];
+                incomeExpenseChart.update();
+            }
+
+            // Update Expense Pie Chart
+            if (expensePieChart && data.category_breakdown) {
+                var categories = data.category_breakdown.map(item => item.category);
+                var amounts = data.category_breakdown.map(item => item.total);
+                
+                expensePieChart.data.labels = categories;
+                expensePieChart.data.datasets[0].data = amounts;
+                expensePieChart.data.datasets[0].backgroundColor = pieChartColors.slice(0, categories.length);
+                expensePieChart.update();
+            }
+        }
+
+        // Make updateCharts available globally
+        window.updateCharts = updateCharts;
+    </script>
+
+    <!-- Edit Transaction Modal -->
+    <div class="modal-overlay" id="edit-modal" style="display: none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>✏️ עריכת תנועה</h2>
+                <button type="button" class="modal-close" onclick="closeEditModal()">&times;</button>
+            </div>
+            <form id="edit-form" method="POST">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="edit-type">סוג תנועה:</label>
+                        <select name="type" id="edit-type" required>
+                            <option value="Income">הכנסה</option>
+                            <option value="Expense">הוצאה</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="edit-category">קטגוריה:</label>
+                        <div class="searchable-select-wrapper">
+                            <input type="text" id="edit-category-search" class="category-search-input" placeholder="חפש או בחר קטגוריה..." autocomplete="off">
+                            <input type="hidden" name="category" id="edit-category" required>
+                            <div class="category-dropdown" id="edit-category-dropdown">
+                                <!-- Options will be populated dynamically by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="edit-amount">סכום (₪):</label>
+                        <input type="number" name="amount" id="edit-amount" step="0.01" required placeholder="0.00">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="edit-date">תאריך:</label>
+                        <input type="date" name="date" id="edit-date" required>
+                    </div>
+                </div>
+                
+                <div class="modal-buttons">
+                    <button type="submit" class="btn-save">💾 שמור שינויים</button>
+                    <button type="button" class="btn-cancel" onclick="closeEditModal()">ביטול</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
